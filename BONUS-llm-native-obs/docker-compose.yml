@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: day23-langfuse-postgres
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [langfuse_net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: day23-langfuse-redis
+    networks: [langfuse_net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: day23-langfuse
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse123@postgres:5432/langfuse
+      REDIS_URL: redis://redis:6379
+      SECRET_KEY: langfuse-secret-key-for-session-encryption
+      SALT: langfuse-salt-for-hashing
+      TELEMETRY_ENABLED: "false"
+      NEXTAUTH_SECRET: langfuse-nextauth-secret
+      NEXTAUTH_URL: http://localhost:3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [langfuse_net]
+
+networks:
+  langfuse_net:
+    driver: bridge
+
+volumes:
+  postgres_data:

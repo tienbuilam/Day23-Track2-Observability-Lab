@@ -19,17 +19,22 @@ Ports free:    BOUND: [8000, 9090, 9093, 3000, 3100, 16686, 4317, 4318, 8888]
 Report written: /home/tienbuilam/Day23-Track2-Observability-Lab/00-setup/setup-report.json
 ```
 
+**Lưu ý về WSL2:** Tất cả các lệnh `make` được chạy từ WSL2 shell (Ubuntu), không phải PowerShell native. Docker Desktop chạy trên Windows với WSL2 integration enabled. Cấu hình này đảm bảo:
+- Docker Compose v2 hoạt động đúng cách
+- Path resolution không bị lỗi ký tự đặc biệt trong đường dẫn Windows
+- Tất cả 7 services chạy ổn định
+
 ---
 
 ## 2. Track 02 — Dashboards & Alerts
 
 ### 6 essential panels (screenshot)
 
-Drop `submission/screenshots/dashboard-overview.png`.
+Xem `submission/screenshots/dashboard-overview.png`.
 
 ### Burn-rate panel
 
-Drop `submission/screenshots/slo-burn-rate.png`.
+Xem `submission/screenshots/slo-burn-rate.png`.
 
 ### Alert fire + resolve
 
@@ -50,7 +55,7 @@ Drop `submission/screenshots/slo-burn-rate.png`.
 
 ### One trace screenshot from Jaeger
 
-Drop `submission/screenshots/jaeger-trace.png` showing `embed-text → vector-search → generate-tokens` spans.
+Xem `submission/screenshots/jaeger-trace.png` thể hiện các spans `embed-text → vector-search → generate-tokens`.
 
 ### Log line correlated to trace
 
@@ -60,16 +65,24 @@ Paste the log line and the trace_id it links to:
 {"time":"2026-05-11T16:45:00.123Z","level":"INFO","service":"day23-app","event":"inference_completed","trace_id":"cb8d40b33b0ff5f559d163dff7704b4f","latency_ms":245,"model":"gpt-3.5-turbo"}
 ```
 
+Trace ID `cb8d40b33b0ff5f559d163dff7704b4f` có thể tra trong Jaeger UI để xem end-to-end trace tương ứng.
+
 ### Tail-sampling math
 
 Giả sử service tạo **100 traces/giây**, tail-sampling policy giữ lại:
-- 100% errors → 100 traces
-- 100% slow (>2s) → ~5 traces (5%)
-- 1% healthy → 1 trace
+- 100% errors → giữ tất cả traces có status_code = ERROR
+- 100% slow (>2000ms) → giữ tất cả traces có latency > 2s
+- 1% healthy → giữ 1% traces không thuộc 2 categories trên
 
-**Tổng cộng:** (100 + 5 + 1) / 100 = **~106 traces/giây** được giữ lại, tương đương ~**1.06%** của tổng volume.
+Với traffic thực tế (1% errors, 1% slow, 98% healthy):
 
-Điều này có nghĩa sampling rate hiệu quả là **~99% dropped**, nhưng vẫn giữ lại đầy đủ thông tin cho debugging và SLA monitoring.
+```
+sampled = 100 × (0.01 × 1.0 + 0.01 × 1.0 + 0.98 × 0.01)
+         = 100 × 0.0298
+         ≈ 3 traces/giây
+```
+
+**Tổng cộng:** ~3% retention → giảm ~97% chi phí lưu trữ Jaeger so với retain-everything. Tuy nhiên, 100% errors và 100% slow traces được giữ lại — đảm bảo không bỏ sót thông tin quan trọng cho debugging.
 
 ---
 
@@ -77,7 +90,7 @@ Giả sử service tạo **100 traces/giây**, tail-sampling policy giữ lại:
 
 ### PSI scores
 
-Paste `04-drift-detection/reports/drift-summary.json`:
+Nội dung `04-drift-detection/reports/drift-summary.json`:
 
 ```json
 {
@@ -117,17 +130,33 @@ Paste `04-drift-detection/reports/drift-summary.json`:
 | Feature | Test | Lý do |
 |---|---|---|
 | **prompt_length** | **PSI** | Prompt length có distribution shift rõ ràng, PSI nhạy với thay đổi ở tails — phù hợp để detect user behavior drift |
-| **embedding_norm** | **KS (Kolmogorov-Smirnov)** | Embedding norms thường continuous distribution, KS test so sánh 2 samples không cần binning, p-value cho thấy rõ ràng không có drift |
+| **embedding_norm** | **KS (Kolmogorov-Smirnov)** | Embedding norms là continuous distribution, KS test so sánh 2 samples không cần binning, p-value = 0.13 cho thấy rõ ràng không có drift |
 | **response_length** | **KL Divergence** | Response length có thể skewed, KL đo lường information gain giữa distributions — nhạy với shifts trong token usage |
-| **response_quality** | **PSI** | Quality scores (0-1) dễ bị shift đột ngột khi model thay đổi hoặc data corrupt, PSI với threshold >0.2 sẽ detect ngay |
+| **response_quality** | **PSI** | Quality scores (0–1) dễ bị shift đột ngột khi model thay đổi hoặc data corrupt, PSI với threshold >0.2 sẽ detect ngay |
+
+**Tại sao không dùng MMD?** MMD (Maximum Mean Discrepancy) phù hợp với high-dimensional data như embeddings thô, không phải scalar metrics như prompt_length hay response_length. Trong lab này, tất cả features đều là scalars nên PSI, KL, KS là đủ.
 
 ---
 
 ## 5. Track 05 — Cross-Day Integration
 
-### Which prior-day metric was hardest to expose? Why?
+> **LƯU Ý:** Tracks #19 và #20 (cross-day integration) được skip do giới hạn RAM trên máy (chỉ 7.67 GB). Điều này ảnh hưởng 10 điểm core. Điểm core tối đa còn lại: 90/100.
 
-**Cost estimation** là metric khó expose nhất vì nó cần cross-service correlation giữa token count (từ app metrics) và pricing model (từ Day 20). Cần kết hợp `inference_tokens_total` với bảng giá từ LLM provider, trong khi các metrics khác như latency hay request count chỉ cần aggregate trực tiếp từ Prometheus. Ngoài ra, việc estimate $/hour cần historical data để normalize, không phải real-time snapshot.
+### Những gì đã lên kế hoạch nhưng chưa thực hiện
+
+Cross-day integration được thiết kế để kết nối metrics từ các ngày 16–22 vào một unified Grafana dashboard:
+- Day 16 Cloud metrics → Prometheus remote_write
+- Day 19 Vector store (Qdrant) → metrics endpoint scrape
+- Day 20 llama.cpp serving → /metrics scrape
+- Day 22 Alignment eval scores → Prometheus gauge
+
+### Tại sao không chạy được
+
+Stack observability đã chiếm ~1.5 GB RAM dưới load (7 services: Prometheus + Grafana + Loki + Jaeger + Alertmanager + OTel Collector + FastAPI app). Các cross-day scrapers cho Days 16, 19, 20, 22 cần thêm 3–4 processes nữa, vượt quá RAM khả dụng trên máy này.
+
+### Một metric khó expose nhất (lý thuyết)
+
+**Cost estimation** sẽ là metric khó expose nhất vì cần cross-service correlation giữa token count (từ app metrics) và bảng giá từ provider (Day 20). Cần JOIN `inference_tokens_total` với per-token cost table, trong khi các metrics khác như latency hay request count chỉ cần aggregate trực tiếp từ Prometheus.
 
 ---
 
@@ -137,16 +166,35 @@ Paste `04-drift-detection/reports/drift-summary.json`:
 
 Cụ thể, khi tích hợp drift detection với quality monitoring, ta có thể tự động trigger alert khi PSI score cho `response_quality` vượt threshold VÀ quality_score trung bình giảm. Điều này chuyển từ reactive (fix bug đã xảy ra) sang proactive (phát hiện model degradation trước khi user complain).
 
+Thực tế trong lab này, tôi thấy `response_quality` có PSI = 8.85 (drift: yes) trong khi latency và error rate vẫn hoàn toàn bình thường. Nếu chỉ có Golden Signals dashboard, tôi sẽ không phát hiện model degradation cho đến khi users báo cáo. Tail-sampling policy cũng đáng chú ý — giữ lại 100% errors nhưng chỉ 1% healthy traces giúp tiết kiệm ~97% chi phí lưu trữ Jaeger mà vẫn giữ visibility đầy đủ cho debugging.
+
 ---
 
-## Screenshots cần bổ sung
+## 7. Bonus — LLM-Native Observability (Langfuse)
 
-- [ ] `submission/screenshots/dashboard-overview.png`
-- [ ] `submission/screenshots/slo-burn-rate.png`
-- [ ] `submission/screenshots/cost-tokens.png`
-- [ ] `submission/screenshots/alertmanager-firing.png`
-- [ ] `submission/screenshots/slack-firing.png`
-- [ ] `submission/screenshots/slack-resolved.png`
-- [ ] `submission/screenshots/jaeger-trace.png`
-- [ ] `submission/screenshots/drift-report.png`
-- [ ] `submission/screenshots/full-stack-dashboard.png`
+### Tổng quan
+
+Langfuse self-hosted được deploy cùng với PostgreSQL (database) và Redis (cache) qua Docker Compose. LangChain integration sử dụng `LangfuseHandler` callback để capture tất cả LLM calls thành traces.
+
+### Cấu hình
+
+Xem `BONUS-llm-native-obs/docker-compose.yml` và `BONUS-llm-native-obs/langfuse-trace.py`.
+
+### Kết quả
+
+Screenshot `BONUS-llm-native-obs/screenshots/langfuse-trace.png` thể hiện 1 LangChain LLM trace được capture thành công trong Langfuse UI.
+
+---
+
+## Screenshots Checklist
+
+- [x] `submission/screenshots/dashboard-overview.png` — **CÓ**
+- [x] `submission/screenshots/slo-burn-rate.png` — **CÓ**
+- [x] `submission/screenshots/cost-tokens.png` — **CÓ**
+- [x] `submission/screenshots/alertmanager-firing.png` — **CÓ**
+- [x] `submission/screenshots/slack-firing.png` — **CÓ**
+- [x] `submission/screenshots/slack-resolved.png` — **CÓ**
+- [x] `submission/screenshots/jaeger-trace.png` — **CÓ**
+- [x] `submission/screenshots/drift-report.png` — **CÓ**
+- [ ] `submission/screenshots/full-stack-dashboard.png` — **SKIPPED** (Track 05 integration)
+- [x] `BONUS-llm-native-obs/screenshots/langfuse-trace.png` — **CÓ** (Bonus B2)
