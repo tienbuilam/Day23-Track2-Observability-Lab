@@ -55,7 +55,7 @@ services:
     volumes:
       - ./02-prometheus-grafana/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     environment:
-      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/REPLACE/ME}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/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}
     networks: [obs]
 
   grafana:
@@ -88,6 +88,13 @@ services:
       - ./03-tracing-and-logs/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
     command: -config.file=/etc/loki/local-config.yaml
     networks: [obs]
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
 
   jaeger:
     image: jaegertracing/all-in-one:1.62.0
