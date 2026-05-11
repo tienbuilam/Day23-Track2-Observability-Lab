@@ -53,9 +53,13 @@ services:
     ports:
       - "127.0.0.1:9093:9093"
     volumes:
-      - ./02-prometheus-grafana/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./02-prometheus-grafana/alertmanager/alertmanager.yml.tmpl:/etc/alertmanager/alertmanager.yml.tmpl:ro
+      - ./02-prometheus-grafana/alertmanager/entrypoint.sh:/entrypoint.sh:ro
+      - ./02-prometheus-grafana/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:rw
     environment:
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/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}
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
     networks: [obs]
 
   grafana:

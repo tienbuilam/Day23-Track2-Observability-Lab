@@ -4,7 +4,7 @@
 
 Capture 1 LangChain LLM trace vào self-hosted Langfuse instance.
 
-**Checkpoint rubric:** Langfuse self-hosted, capture 1 LangChain LLM trace (10 pts bonus).
+**Checkpoint rubric:** Langfuse self-hosted (v2, PostgreSQL + Redis, no ClickHouse required), capture 1 LangChain LLM trace (10 pts bonus).
 
 ---
 
@@ -36,7 +36,7 @@ docker compose up -d
 
 ### 2. Truy cập Langfuse UI
 
-Mở: **http://localhost:3001**
+Mở: **http://localhost:3002**
 
 Đăng nhập lần đầu:
 - **Email:** `admin@langfuse.com`
@@ -85,7 +85,7 @@ Langfuse Self-Hosted — LangChain LLM Trace Capture
 
 Running LangChain chain with prompt: Explain in one sentence...
 Response: Observability...
-Trace URL: http://localhost:3001/project/xxx/traces/xxx
+Trace URL: http://localhost:3002/project/xxx/traces/xxx
 Open the URL above to see the LangChain LLM trace in Langfuse.
 ```
 

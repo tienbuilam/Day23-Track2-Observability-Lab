@@ -7,40 +7,33 @@ Prerequisites:
 Usage:
     # Start Langfuse (in BONUS-llm-native-obs/):
     #   docker compose up -d
-    #   # Wait ~30s for Langfuse to initialize
+    #       # Wait ~30s for Langfuse to initialize
     #
     # Then run this script:
     #   python langfuse-trace.py
     #
-    # Open http://localhost:3001 to view traces in Langfuse UI.
+    # Open http://localhost:3002 to view traces in Langfuse UI.
     #   Default credentials:  admin@langfuse.com / langfuse123
 """
 
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from pathlib import Path
 
-from langchain_core.outputs import LLMResult
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent / ".env")
+
+from datetime import datetime, timezone
+
 from langchain_openai import ChatOpenAI
-
-from langfuse import Langfuse
 from langfuse.callback import CallbackHandler
 
-# Langfuse credentials — point to self-hosted instance
-os.environ["LANGFUSE_PUBLIC_KEY"] = "pk-lf-..."
-os.environ["LANGFUSE_SECRET_KEY"] = "sk-lf-..."
-os.environ["LANGFUSE_HOST"] = "http://localhost:3001"
-
-# Initialise Langfuse client (used for API access)
-langfuse = Langfuse()
-
-# Initialise Langfuse CallbackHandler for LangChain
 langfuse_handler = CallbackHandler(
     user_id="day23-lab",
     metadata={
         "lab": "Day 23 Observability",
-        "date": datetime.utcnow().isoformat(),
+        "date": datetime.now(tz=timezone.utc).isoformat(),
     },
 )
 
@@ -64,16 +57,7 @@ def generate_trace() -> str:
     response = llm.invoke(prompt, config={"callbacks": [langfuse_handler]})
     print(f"Response: {response.content}")
 
-    # Retrieve the trace we just created via API
-    traces = langfuse.trace.list(limit=1)
-    if traces.data:
-        latest_trace = traces.data[0]
-        trace_url = (
-            f"http://localhost:3001/project/{langfuse.project_id}/traces/{latest_trace.id}"
-        )
-        return trace_url
-
-    return "http://localhost:3001 (view latest trace manually)"
+    return "http://localhost:3002 (view latest trace in Langfuse UI)"
 
 
 def cleanup() -> None:
@@ -90,7 +74,7 @@ if __name__ == "__main__":
     print("Steps:")
     print("  1. docker compose up -d")
     print("  2. Wait 30s for Langfuse to initialize")
-    print("  3. Open http://localhost:3001")
+    print("  3. Open http://localhost:3002")
     print("     First-time login: admin@langfuse.com / langfuse123")
     print("  4. python langfuse-trace.py")
     print()
